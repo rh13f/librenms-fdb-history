@@ -92,6 +92,8 @@ info "Sync script installed: $LIBRENMS_PATH/scripts/fdb-history-sync.php"
 step "Plugin"
 
 mkdir -p "$LIBRENMS_PATH/app/Plugins"
+# Remove old directory first so deleted/moved files don't linger
+rm -rf "$LIBRENMS_PATH/app/Plugins/FdbHistory"
 cp -r "$SCRIPT_DIR/plugin/FdbHistory" "$LIBRENMS_PATH/app/Plugins/"
 chown -R librenms:librenms "$LIBRENMS_PATH/app/Plugins/FdbHistory"
 info "Plugin installed: $LIBRENMS_PATH/app/Plugins/FdbHistory"
