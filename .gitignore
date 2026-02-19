@@ -1,0 +1,21 @@
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code session data (not part of the project)
+.claude/
+
+# Environment / secrets (never commit these)
+.env
+*.env.local
+
+# PHP
+vendor/
+composer.lock
