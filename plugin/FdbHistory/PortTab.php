@@ -22,14 +22,11 @@ use Illuminate\Support\Facades\DB;
 
 class PortTab extends PortTabHook
 {
+    public string $view = 'port-tab';
+
     public function authorize(User $user, Port $port): bool
     {
         return $user->can('global-read');
-    }
-
-    public function view(): string
-    {
-        return 'FdbHistory::port-tab';
     }
 
     public function data(Port $port, array $settings = []): array

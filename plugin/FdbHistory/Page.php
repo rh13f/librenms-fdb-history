@@ -18,14 +18,11 @@ use Illuminate\Support\Facades\DB;
 
 class Page extends PageHook
 {
+    public string $view = 'page';
+
     public function authorize(User $user): bool
     {
         return $user->can('global-read');
-    }
-
-    public function view(): string
-    {
-        return 'FdbHistory::page';
     }
 
     /**
