@@ -14,9 +14,10 @@ ports or disappears, the old mapping is lost. This project adds:
 
 - **`fdb_history` table** — stores one row per unique `(mac, device, port, vlan)` combination,
   with `first_seen` and `last_seen` timestamps.
-- **`fdb-history-sync.php`** — cron script that upserts `ports_fdb` → `fdb_history` after
-  each poll. Uses a single `INSERT ... ON DUPLICATE KEY UPDATE` for efficiency.
-- **FdbHistory plugin** — LibreNMS UI plugin with a search page at `/plugin/FdbHistory`.
+- **`fdb-history-sync.php`** — cron script that upserts `ports_fdb` → `fdb_history` every
+  minute. Uses a single `INSERT ... ON DUPLICATE KEY UPDATE` for efficiency.
+- **FdbHistory plugin** — LibreNMS UI plugin with a search page at `/plugin/FdbHistory`
+  and a MAC history tab on each port's detail page.
 
 The unique constraint `(mac_address, device_id, port_id, vlan_id)` drives all the logic:
 - Same MAC still on same port → `last_seen` updated, `first_seen` unchanged
@@ -27,24 +28,40 @@ The unique constraint `(mac_address, device_id, port_id, vlan_id)` drives all th
 
 ## Installation
 
-### 1. Create the `fdb_history` table
+### Automated (recommended)
 
-Run the SQL migration on your LibreNMS database:
-
-```bash
-mysql -u librenms -p librenms < /path/to/fdb_history_setup.sql
-```
-
-Or interactively:
-```sql
-mysql -u librenms -p librenms
-source /path/to/fdb_history_setup.sql
-```
-
-### 2. Deploy the sync script
+Clone the repo and run the install script as root:
 
 ```bash
-# Copy to LibreNMS scripts directory
+cd /tmp
+git clone https://github.com/rh13f/librenms-fdb-history.git
+cd librenms-fdb-history
+sudo ./install.sh
+```
+
+The script handles all steps below automatically and is safe to re-run for updates.
+
+---
+
+### Manual Installation
+
+#### 1. Create the `fdb_history` table
+
+The table creation requires MySQL root access (the `librenms` DB user does not have
+`CREATE TABLE` privileges):
+
+```bash
+sudo mysql librenms < sql/fdb_history_setup.sql
+```
+
+Or with an explicit root login:
+```bash
+mysql -u root -p librenms < sql/fdb_history_setup.sql
+```
+
+#### 2. Deploy the sync script
+
+```bash
 sudo cp scripts/fdb-history-sync.php /opt/librenms/scripts/
 sudo chown librenms:librenms /opt/librenms/scripts/fdb-history-sync.php
 sudo chmod 750 /opt/librenms/scripts/fdb-history-sync.php
@@ -61,35 +78,59 @@ Expected output:
 [2025-01-15 14:30:01] Sync complete — ports_fdb: 4821 rows | fdb_history: 4821 rows | new: 4821 | updated: 0 | elapsed: 0.42s
 ```
 
-### 3. Set up the cron job
+#### 3. Set up the cron job
 
 Create `/etc/cron.d/librenms-fdb-history`:
 
-```
-# FDB History Sync — runs every 5 minutes (matches LibreNMS poll interval)
-*/5 * * * * librenms /usr/bin/php /opt/librenms/scripts/fdb-history-sync.php >> /var/log/librenms/fdb-history-sync.log 2>&1
-```
-
 ```bash
-sudo bash -c 'cat > /etc/cron.d/librenms-fdb-history << EOF
-*/5 * * * * librenms /usr/bin/php /opt/librenms/scripts/fdb-history-sync.php >> /var/log/librenms/fdb-history-sync.log 2>&1
+sudo bash -c 'cat > /etc/cron.d/librenms-fdb-history <<EOF
+# FDB History Sync — runs every minute
+* * * * * librenms /usr/bin/php /opt/librenms/scripts/fdb-history-sync.php >> /var/log/librenms/fdb-history-sync.log 2>&1
 EOF'
 ```
 
-### 4. Install the UI plugin
+Note: running every minute produces ~144 KB/day of log output. Add a logrotate rule if needed.
+
+#### 4. Install the UI plugin
 
 ```bash
-# Copy plugin to LibreNMS
 sudo cp -r plugin/FdbHistory /opt/librenms/app/Plugins/
 sudo chown -R librenms:librenms /opt/librenms/app/Plugins/FdbHistory
 ```
 
-### 5. Enable the plugin in LibreNMS
+#### 5. Enable the plugin in LibreNMS
 
 1. Log in to LibreNMS as an admin
-2. Go to **Settings → Plugins** (or **Admin → Plugins**)
+2. Go to **Admin → Plugins**
 3. Find **FdbHistory** and click **Enable**
 4. The "FDB History" link will appear in the **Plugins** menu
+
+---
+
+## Features
+
+### MAC Search (`/plugin/FdbHistory`)
+
+- Search by full or partial MAC address in any format (`aa:bb:cc:dd:ee:ff`, `aabbccddeeff`, `aa-bb-cc`, etc.)
+- Filter by **device**, **port ID**, or **VLAN number** — combine with MAC search or use alone
+- **OUI vendor names** shown when the `vendors` table is present
+- Status badges: **Active** (< 20 min), **Recent** (< 2 hr), **Historical**
+- Results capped at 1,000 rows
+
+### JSON API
+
+Append `&format=json` to any search URL:
+
+```
+GET /plugin/FdbHistory?mac=aabbcc&format=json
+GET /plugin/FdbHistory?device=42&port=15&format=json
+GET /plugin/FdbHistory?vlan=100&format=json
+```
+
+### Port History Tab
+
+Each port's detail page in LibreNMS gains an **FDB History** tab showing all MACs ever
+seen on that port (up to 500 rows), with a link back to the full search filtered by port.
 
 ---
 
@@ -97,18 +138,22 @@ sudo chown -R librenms:librenms /opt/librenms/app/Plugins/FdbHistory
 
 ```
 .
-├── README.md
+├── install.sh                           # Automated install / update script
 ├── sql/
-│   └── fdb_history_setup.sql        # Run once to create the table
+│   └── fdb_history_setup.sql            # Run once to create the table
 ├── scripts/
-│   └── fdb-history-sync.php         # Cron sync script
+│   └── fdb-history-sync.php             # Cron sync script (runs every minute)
 └── plugin/
     └── FdbHistory/
-        ├── Menu.php                 # Adds "FDB History" to plugins menu
-        ├── Page.php                 # Search logic (queries fdb_history)
+        ├── Menu.php                     # Adds "FDB History" to plugins menu
+        ├── Page.php                     # Search + JSON API logic
+        ├── PortTab.php                  # Port detail tab hook
+        ├── Support/
+        │   └── FdbHelpers.php           # Shared static helpers (fmtMac, ouiPrefix)
         └── resources/views/
-            ├── menu.blade.php       # Menu link template
-            └── page.blade.php       # Search UI template
+            ├── menu.blade.php           # Menu link template
+            ├── page.blade.php           # Search UI template
+            └── port-tab.blade.php       # Port tab template
 ```
 
 ---
@@ -128,26 +173,12 @@ fdb_history
 UNIQUE KEY: (mac_address, device_id, port_id, vlan_id)
 ```
 
----
-
-## Optional: History Retention
-
-By default, history is kept forever. To automatically purge old entries, edit
-`fdb-history-sync.php` and change:
-
-```php
-define('RETENTION_DAYS', 0);   // 0 = keep forever
-```
-to e.g.:
-```php
-define('RETENTION_DAYS', 365); // delete entries not seen in 1 year
-```
+History is retained for **365 days** by default. To adjust, edit `RETENTION_DAYS`
+in `fdb-history-sync.php`.
 
 ---
 
-## Searching via CLI / API
-
-You can query the history directly in MySQL:
+## Searching via CLI
 
 ```sql
 -- Full history for a specific MAC
@@ -166,7 +197,7 @@ LEFT JOIN vlans   v ON v.vlan_id   = h.vlan_id
 WHERE h.mac_address = 'aabbccddeeff'
 ORDER BY h.last_seen DESC;
 
--- Find all MACs seen on a specific port in the last 30 days
+-- All MACs seen on a specific port in the last 30 days
 SELECT h.mac_address, h.first_seen, h.last_seen
 FROM fdb_history h
 JOIN ports p ON p.port_id = h.port_id
@@ -180,11 +211,8 @@ SELECT
     COUNT(DISTINCT mac_address) AS unique_macs,
     COUNT(DISTINCT device_id) AS devices,
     MIN(first_seen) AS oldest_entry,
-    MAX(last_seen) AS newest_entry,
-    ROUND(data_length / 1024 / 1024, 1) AS size_mb
-FROM fdb_history
-JOIN information_schema.TABLES
-    ON table_schema = DATABASE() AND table_name = 'fdb_history';
+    MAX(last_seen) AS newest_entry
+FROM fdb_history;
 ```
 
 ---
@@ -192,15 +220,17 @@ JOIN information_schema.TABLES
 ## Requirements
 
 - LibreNMS (any recent version with the Laravel-based plugin system)
-- PHP 8.0+ (for `never` return type in sync script — downgrade to `void` + `exit(1)` for PHP 7.x)
-- FDB polling enabled on your switches in LibreNMS (Settings → Poller → Modules → fdb-table)
+- PHP 8.0+
+- FDB polling enabled on your switches in LibreNMS (**Settings → Poller → Modules → fdb-table**)
+
+---
 
 ## Troubleshooting
 
-**Sync script fails with "Cannot find .env"**
-Pass the LibreNMS path explicitly:
+**Table creation fails with access denied**
+The `librenms` MySQL user doesn't have `CREATE TABLE` privileges. Use root:
 ```bash
-php /opt/librenms/scripts/fdb-history-sync.php /opt/librenms
+sudo mysql librenms < sql/fdb_history_setup.sql
 ```
 
 **Plugin not appearing in LibreNMS**
@@ -214,8 +244,22 @@ LibreNMS must be polling FDB tables. Verify:
 sudo -u librenms php /opt/librenms/lnms device:poll <device-id> --modules=fdb-table -v
 ```
 
-**fdb_history table grows too large**
-Enable the retention setting in `fdb-history-sync.php`:
-```php
-define('RETENTION_DAYS', 365);
+**Port tab not appearing**
+Verify that `PortTabHook` exists in your LibreNMS version:
+```bash
+ls /opt/librenms/app/Plugins/Hooks/PortTabHook.php
+```
+
+**Sync log growing too large**
+Add a logrotate rule:
+```bash
+sudo bash -c 'cat > /etc/logrotate.d/librenms-fdb-history <<EOF
+/var/log/librenms/fdb-history-sync.log {
+    weekly
+    rotate 4
+    compress
+    missingok
+    notifempty
+}
+EOF'
 ```
