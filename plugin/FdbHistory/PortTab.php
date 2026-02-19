@@ -15,14 +15,14 @@
 namespace App\Plugins\FdbHistory;
 
 use App\Models\Port;
+use App\Models\User;
 use App\Plugins\FdbHistory\Support\FdbHelpers;
 use App\Plugins\Hooks\PortTabHook;
-use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\DB;
 
 class PortTab extends PortTabHook
 {
-    public function authorize(Authenticatable $user): bool
+    public function authorize(User $user, Port $port): bool
     {
         return $user->can('global-read');
     }

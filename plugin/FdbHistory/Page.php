@@ -11,14 +11,14 @@
 
 namespace App\Plugins\FdbHistory;
 
+use App\Models\User;
 use App\Plugins\Hooks\PageHook;
-use Illuminate\Contracts\Auth\Authenticatable;
 use App\Plugins\FdbHistory\Support\FdbHelpers;
 use Illuminate\Support\Facades\DB;
 
 class Page extends PageHook
 {
-    public function authorize(Authenticatable $user): bool
+    public function authorize(User $user): bool
     {
         return $user->can('global-read');
     }
