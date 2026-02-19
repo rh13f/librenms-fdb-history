@@ -27,6 +27,11 @@ class PortTab extends PortTabHook
         return $user->can('global-read');
     }
 
+    public function view(): string
+    {
+        return 'FdbHistory::port-tab';
+    }
+
     public function data(Port $port, array $settings = []): array
     {
         // Check vendors table availability (may be absent on older installs)

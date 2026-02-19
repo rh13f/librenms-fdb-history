@@ -23,6 +23,11 @@ class Page extends PageHook
         return $user->can('global-read');
     }
 
+    public function view(): string
+    {
+        return 'FdbHistory::page';
+    }
+
     /**
      * PageHook::data() takes no parameters. Use the request() helper to access
      * the current HTTP request rather than injecting it as a parameter.
