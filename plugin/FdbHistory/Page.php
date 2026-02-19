@@ -13,7 +13,6 @@ namespace App\Plugins\FdbHistory;
 
 use App\Plugins\Hooks\PageHook;
 use Illuminate\Contracts\Auth\Authenticatable;
-use Illuminate\Http\Request;
 use App\Plugins\FdbHistory\Support\FdbHelpers;
 use Illuminate\Support\Facades\DB;
 
@@ -25,11 +24,13 @@ class Page extends PageHook
     }
 
     /**
-     * Laravel's IoC container injects Request via $app->call() in PageHook::handle().
-     * $settings contains any plugin configuration values.
+     * PageHook::data() takes no parameters. Use the request() helper to access
+     * the current HTTP request rather than injecting it as a parameter.
      */
-    public function data(Request $request, array $settings = []): array
+    public function data(): array
     {
+        $request = request();
+
         // --- Parse request params ---
         $raw_mac   = trim($request->get('mac', ''));
         $device_id = (int) $request->get('device', 0);
@@ -128,7 +129,7 @@ class Page extends PageHook
         }
 
         // --- JSON API: short-circuit before returning HTML view data ---
-        if ($request->get('format') === 'json') {
+        if ($request->get('format') === 'json') {  // $request still in scope from above
             response()->json([
                 'query' => [
                     'mac'    => $raw_mac ?: null,
