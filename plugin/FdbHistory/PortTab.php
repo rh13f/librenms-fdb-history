@@ -22,7 +22,7 @@ use Illuminate\Support\Facades\DB;
 
 class PortTab extends PortTabHook
 {
-    public string $view = 'port-tab';
+    public $view = 'port-tab';
 
     public function authorize(User $user, Port $port): bool
     {
