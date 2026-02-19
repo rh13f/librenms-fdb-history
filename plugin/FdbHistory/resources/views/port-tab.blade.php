@@ -60,7 +60,7 @@
                 <tbody>
                     @foreach($results as $row)
                     @php
-                        $mac_fmt      = \App\Plugins\FdbHistory\FdbHelpers::fmtMac($row->mac_address);
+                        $mac_fmt      = \App\Plugins\FdbHistory\Support\FdbHelpers::fmtMac($row->mac_address);
                         $last_seen_ts = $row->last_seen ? strtotime($row->last_seen) : 0;
                         $age_minutes  = $last_seen_ts ? (time() - $last_seen_ts) / 60 : PHP_INT_MAX;
                         $is_active    = $age_minutes < 20;

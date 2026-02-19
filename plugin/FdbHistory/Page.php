@@ -14,6 +14,7 @@ namespace App\Plugins\FdbHistory;
 use App\Plugins\Hooks\PageHook;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Request;
+use App\Plugins\FdbHistory\Support\FdbHelpers;
 use Illuminate\Support\Facades\DB;
 
 class Page extends PageHook

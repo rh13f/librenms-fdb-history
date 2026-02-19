@@ -15,6 +15,7 @@
 namespace App\Plugins\FdbHistory;
 
 use App\Models\Port;
+use App\Plugins\FdbHistory\Support\FdbHelpers;
 use App\Plugins\Hooks\PortTabHook;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\DB;

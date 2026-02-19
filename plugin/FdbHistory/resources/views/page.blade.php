@@ -218,7 +218,7 @@
                             <tbody>
                                 @foreach($results as $row)
                                 @php
-                                    $mac_fmt  = \App\Plugins\FdbHistory\FdbHelpers::fmtMac($row->mac_address);
+                                    $mac_fmt  = \App\Plugins\FdbHistory\Support\FdbHelpers::fmtMac($row->mac_address);
                                     $ifLabel  = $row->ifName ?: $row->ifDescr ?: null;
                                     $hostname = $row->hostname ?: $row->sysName ?: null;
 

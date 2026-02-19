@@ -7,7 +7,7 @@
  * when a blade view is rendered more than once in a single request.
  */
 
-namespace App\Plugins\FdbHistory;
+namespace App\Plugins\FdbHistory\Support;
 
 class FdbHelpers
 {
