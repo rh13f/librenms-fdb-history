@@ -112,19 +112,31 @@ sudo chown -R librenms:librenms /opt/librenms/app/Plugins/FdbHistory
 ### MAC Search (`/plugin/FdbHistory`)
 
 - Search by full or partial MAC address in any format (`aa:bb:cc:dd:ee:ff`, `aabbccddeeff`, `aa-bb-cc`, etc.)
-- Filter by **device**, **port ID**, or **VLAN number** — combine with MAC search or use alone
+- Filter by **device**, **port**, or **VLAN** — combine with MAC search or use alone
+- **Cascading dropdowns** — selecting a device auto-populates the port and VLAN dropdowns
+  with only the options that actually appear in history for that device
+- **Hide trunk ports** checkbox (default on) — automatically excludes trunk/uplink ports
+  using a MAC-count heuristic (ports that have carried >20 distinct MACs are treated as
+  trunks and suppressed, so endpoint searches show only access port hits)
 - **OUI vendor names** shown when the `vendors` table is present
 - Status badges: **Active** (< 20 min), **Recent** (< 2 hr), **Historical**
 - Results capped at 1,000 rows
 
 ### JSON API
 
-Append `&format=json` to any search URL:
+Append `&format=json` to any search URL for machine-readable output:
 
 ```
 GET /plugin/FdbHistory?mac=aabbcc&format=json
 GET /plugin/FdbHistory?device=42&port=15&format=json
 GET /plugin/FdbHistory?vlan=100&format=json
+```
+
+Dropdown data endpoints (used by the UI, also available directly):
+
+```
+GET /plugin/FdbHistory?format=json&action=ports&device=42
+GET /plugin/FdbHistory?format=json&action=vlans&device=42
 ```
 
 ### Port History Tab

@@ -57,8 +57,9 @@ app/Plugins/FdbHistory/
     └── port-tab.blade.php            # MAC history on port detail page
 ```
 - Plugin page is accessible at `/plugin/FdbHistory`
-- `Page::data(Request $request)` — Laravel IoC injects Request automatically
-- `authorize()` uses `$user->can('global-read')` for access control
+- `Page::data()` — no parameters; use `request()` helper inside the method
+- `authorize()` **must** use `Authenticatable $user` (not `User $user`) and call
+  `auth()->user()?->can('global-read')` — see Plugin System Gotchas below
 - Enable/disable via LibreNMS Admin → Plugins UI
 - **PortTabHook**: verify `/opt/librenms/app/Plugins/Hooks/PortTabHook.php` exists after deploy
 
@@ -139,22 +140,74 @@ Search triggers when **any** of these GET params is non-empty:
 | `device` | Exact `h.device_id` match |
 | `port` | Exact `h.port_id` match |
 | `vlan` | Exact `v.vlan_vlan` match (real VLAN number) |
+| `hide_trunks` | `'1'` (default) — exclude ports with >20 distinct MACs |
 
 Add `&format=json` to get JSON instead of HTML. Uses `response()->json(...)->send(); exit(0)` pattern.
 
+**JSON sub-endpoints** (handled at top of `data()`, early exit before main query):
+- `?format=json&action=ports&device=X` — ports for device X in fdb_history
+- `?format=json&action=vlans&device=X` — VLANs for device X in fdb_history
+
 OUI vendor join: `LEFT JOIN vendors as ven ON ven.oui = UPPER(LEFT(h.mac_address, 6))` — only added when `$hasVendors === true`.
 
+**Trunk filter** (`hide_trunks`): When on and no specific port is selected, adds:
+```php
+->whereNotIn('h.port_id', function ($q) {
+    $q->from('fdb_history')->select('port_id')
+      ->where('port_id', '>', 0)->groupBy('port_id')
+      ->havingRaw('COUNT(DISTINCT mac_address) > 20');
+})
+```
+Form always submits `hide_trunks=0|1` via a hidden input; checkbox toggles it via JS `onchange`.
+
 **UI features:**
-- MAC input + Device dropdown + Port ID input + VLAN number input
+- MAC input + Device dropdown + Port select (AJAX-populated) + VLAN select (AJAX-populated)
+- "Hide trunk ports" checkbox (default on, threshold >20 MACs)
 - Vendor column (when `vendors` table present)
 - Results: device link, interface link, VLAN number + name, first_seen, last_seen
 - Status badges: Active (< 20 min), Recent (< 2 hr), Historical
 - JSON button in results bar
 - Landing page: table stats + device dropdown pre-populated
+- JS: device change → AJAX-load ports/vlans; page-load with device set → auto-populate
 
 #### `PortTab.php` — Port detail tab
 Adds FDB History tab to each port's detail page. Shows MACs seen on that port
 (max 500, ordered by `last_seen DESC`), with link to full search filtered by port.
+
+---
+
+## Plugin System Gotchas (hard-won lessons)
+
+### `authorize()` must use `Authenticatable`, not `User`
+`PluginManager::hooksFor()` calls `authorize()` via `app()->call()` with only
+`['pluginName', 'settings']` in the named args. When typed `User $user`, the Laravel
+container instantiates a **fresh empty `App\Models\User()`** (it's concrete, so the
+container builds it). That empty model fails `->can('global-read')` → `authorize()` returns
+`false` → hook filtered out → controller falls back to `plugins.missing` → "Missing View".
+
+```php
+// CORRECT — matches ExamplePlugin convention
+public function authorize(\Illuminate\Contracts\Auth\Authenticatable $user): bool
+{
+    return auth()->user()?->can('global-read') ?? false;
+}
+```
+
+### View namespace root is `app/Plugins/PluginName/`
+`PluginProvider` calls `loadViewsFrom($pluginDir, $pluginName)`. The default
+`$view = 'resources.views.page'` (inherited from `PageHook`) resolves dot-notation to
+`app/Plugins/FdbHistory/resources/views/page.blade.php` ✓. Do not override `$view`
+with `'page'` — that resolves to `app/Plugins/FdbHistory/page.blade.php` ✗.
+
+### `PortTabHook.$view` is untyped — child class cannot add a type annotation
+PHP 8 forbids adding a type to an inherited untyped property. `PageHook` has
+`public string $view` (typed); `PortTabHook` has `public $view` (untyped). Use
+`public $view = 'override';` in PortTab (no `string` keyword).
+
+### `PluginManager::call()` silently disables the plugin on exception
+If `handle()` (or `data()`) throws, the plugin is set `plugin_active = 0` in the DB
+and next load shows "Missing View" — indistinguishable from a missing blade file.
+Wrap all DB queries in try/catch inside `data()`.
 
 ---
 
