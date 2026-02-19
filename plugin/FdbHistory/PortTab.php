@@ -22,8 +22,6 @@ use Illuminate\Support\Facades\DB;
 
 class PortTab extends PortTabHook
 {
-    public $view = 'port-tab';
-
     public function authorize(User $user, Port $port): bool
     {
         return $user->can('global-read');
