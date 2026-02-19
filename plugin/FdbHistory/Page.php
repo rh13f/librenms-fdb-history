@@ -31,11 +31,24 @@ class Page extends PageHook
     {
         $request = request();
 
+        // --- AJAX sub-endpoints (early exit, no main query needed) ---
+        if ($request->get('format') === 'json') {
+            $action = $request->get('action', '');
+            if ($action === 'ports') {
+                $this->jsonPorts($request);
+            }
+            if ($action === 'vlans') {
+                $this->jsonVlans($request);
+            }
+        }
+
         // --- Parse request params ---
-        $raw_mac   = trim($request->get('mac', ''));
-        $device_id = (int) $request->get('device', 0);
-        $port_id   = (int) $request->get('port', 0);
-        $vlan_num  = (int) $request->get('vlan', 0);
+        $raw_mac     = trim($request->get('mac', ''));
+        $device_id   = (int) $request->get('device', 0);
+        $port_id     = (int) $request->get('port', 0);
+        $vlan_num    = (int) $request->get('vlan', 0);
+        // hide_trunks: default on; form always submits '0' or '1' via hidden input
+        $hide_trunks = $request->get('hide_trunks', '1') !== '0';
 
         $has_search = $raw_mac !== '' || $device_id > 0 || $port_id > 0 || $vlan_num > 0;
 
@@ -106,6 +119,15 @@ class Page extends PageHook
 
                     if ($port_id > 0) {
                         $query->where('h.port_id', '=', $port_id);
+                    } elseif ($hide_trunks) {
+                        // Exclude trunk/uplink ports: those that have carried >20 distinct MACs
+                        $query->whereNotIn('h.port_id', function ($q) {
+                            $q->from('fdb_history')
+                              ->select('port_id')
+                              ->where('port_id', '>', 0)
+                              ->groupBy('port_id')
+                              ->havingRaw('COUNT(DISTINCT mac_address) > 20');
+                        });
                     }
 
                     if ($vlan_num > 0) {
@@ -128,14 +150,15 @@ class Page extends PageHook
             }
         }
 
-        // --- JSON API: short-circuit before returning HTML view data ---
-        if ($request->get('format') === 'json') {  // $request still in scope from above
+        // --- JSON API: full search result ---
+        if ($request->get('format') === 'json') {
             response()->json([
                 'query' => [
-                    'mac'    => $raw_mac ?: null,
-                    'device' => $device_id ?: null,
-                    'port'   => $port_id ?: null,
-                    'vlan'   => $vlan_num ?: null,
+                    'mac'         => $raw_mac ?: null,
+                    'device'      => $device_id ?: null,
+                    'port'        => $port_id ?: null,
+                    'vlan'        => $vlan_num ?: null,
+                    'hide_trunks' => $hide_trunks,
                 ],
                 'count'   => $results->count(),
                 'results' => $results->map(fn ($r) => [
@@ -182,17 +205,68 @@ class Page extends PageHook
         } catch (\Exception $e) {}
 
         return [
-            'raw_mac'    => $raw_mac,
-            'device_id'  => $device_id,
-            'port_id'    => $port_id,
-            'vlan_num'   => $vlan_num,
-            'has_search' => $has_search,
-            'results'    => $results,
-            'error'      => $error,
-            'stats'      => $stats,
-            'overview'   => $overview,
-            'hasVendors' => $hasVendors,
-            'devices'    => $devices,
+            'raw_mac'     => $raw_mac,
+            'device_id'   => $device_id,
+            'port_id'     => $port_id,
+            'vlan_num'    => $vlan_num,
+            'hide_trunks' => $hide_trunks,
+            'has_search'  => $has_search,
+            'results'     => $results,
+            'error'       => $error,
+            'stats'       => $stats,
+            'overview'    => $overview,
+            'hasVendors'  => $hasVendors,
+            'devices'     => $devices,
         ];
+    }
+
+    /** Returns JSON list of ports for a device that appear in fdb_history. */
+    private function jsonPorts($request): void
+    {
+        $deviceId = (int) $request->get('device', 0);
+        $ports = collect();
+        if ($deviceId > 0) {
+            try {
+                $ports = DB::table('fdb_history as h')
+                    ->join('ports as p', 'p.port_id', '=', 'h.port_id')
+                    ->where('h.device_id', $deviceId)
+                    ->where('h.port_id', '>', 0)
+                    ->select(['h.port_id', 'p.ifName', 'p.ifDescr'])
+                    ->distinct()
+                    ->orderBy('p.ifName')
+                    ->get()
+                    ->map(fn ($p) => [
+                        'port_id' => $p->port_id,
+                        'label'   => $p->ifName ?: $p->ifDescr ?: 'port #' . $p->port_id,
+                    ]);
+            } catch (\Exception $e) {}
+        }
+        response()->json($ports->values()->all())->send();
+        exit(0);
+    }
+
+    /** Returns JSON list of VLANs for a device that appear in fdb_history. */
+    private function jsonVlans($request): void
+    {
+        $deviceId = (int) $request->get('device', 0);
+        $vlans = collect();
+        if ($deviceId > 0) {
+            try {
+                $vlans = DB::table('fdb_history as h')
+                    ->join('vlans as v', 'v.vlan_id', '=', 'h.vlan_id')
+                    ->where('h.device_id', $deviceId)
+                    ->where('h.vlan_id', '>', 0)
+                    ->select(['v.vlan_vlan', 'v.vlan_name'])
+                    ->distinct()
+                    ->orderBy('v.vlan_vlan')
+                    ->get()
+                    ->map(fn ($v) => [
+                        'vlan_vlan' => $v->vlan_vlan,
+                        'label'     => $v->vlan_vlan . ($v->vlan_name ? ' — ' . $v->vlan_name : ''),
+                    ]);
+            } catch (\Exception $e) {}
+        }
+        response()->json($vlans->values()->all())->send();
+        exit(0);
     }
 }

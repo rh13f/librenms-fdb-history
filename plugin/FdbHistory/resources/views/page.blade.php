@@ -2,17 +2,18 @@
     FDB History — page.blade.php
     LibreNMS plugin providing Netdisco-style historical MAC address tracking.
     Variables injected by Page.php::data():
-        $raw_mac    — original MAC search input string
-        $device_id  — device filter (0 = all)
-        $port_id    — port filter (0 = all)
-        $vlan_num   — VLAN number filter (0 = all)
-        $has_search — bool: at least one filter is active
-        $results    — Illuminate\Support\Collection of result rows
-        $error      — error message string or null
-        $stats      — ['total', 'unique_macs', 'unique_devices'] or null
-        $overview   — stdObject with total/unique_macs/oldest/newest or null
-        $hasVendors — bool: vendors table available for OUI lookups
-        $devices    — Collection of devices present in fdb_history
+        $raw_mac     — original MAC search input string
+        $device_id   — device filter (0 = all)
+        $port_id     — port filter (0 = all)
+        $vlan_num    — VLAN number filter (0 = all)
+        $hide_trunks — bool: filter out ports with >20 unique MACs (trunk heuristic)
+        $has_search  — bool: at least one filter is active
+        $results     — Illuminate\Support\Collection of result rows
+        $error       — error message string or null
+        $stats       — ['total', 'unique_macs', 'unique_devices'] or null
+        $overview    — stdObject with total/unique_macs/oldest/newest or null
+        $hasVendors  — bool: vendors table available for OUI lookups
+        $devices     — Collection of devices present in fdb_history
 --}}
 
 <div class="container-fluid" style="padding-top: 15px;">
@@ -73,7 +74,7 @@
                 {{-- Row 2: Additional filters --}}
                 <div class="row" style="margin-top: 10px;">
                     <div class="col-sm-4">
-                        <select name="device" class="form-control" title="Filter by device">
+                        <select name="device" id="fdbh-device" class="form-control" title="Filter by device">
                             <option value="">— All Devices —</option>
                             @foreach($devices as $dev)
                             <option value="{{ $dev->device_id }}" {{ $device_id == $dev->device_id ? 'selected' : '' }}>
@@ -82,32 +83,31 @@
                             @endforeach
                         </select>
                     </div>
-                    <div class="col-sm-2">
-                        <input
-                            type="number"
-                            name="port"
-                            class="form-control"
-                            placeholder="Port ID"
-                            title="Filter by port_id (use port detail link to pre-fill)"
-                            value="{{ $port_id ?: '' }}"
-                            min="0"
-                        >
+                    <div class="col-sm-3">
+                        <select name="port" id="fdbh-port" class="form-control" title="Filter by port — select a device first">
+                            <option value="">— All Ports —</option>
+                            @if($port_id > 0)
+                            <option value="{{ $port_id }}" selected>port #{{ $port_id }}</option>
+                            @endif
+                        </select>
                     </div>
                     <div class="col-sm-2">
-                        <input
-                            type="number"
-                            name="vlan"
-                            class="form-control"
-                            placeholder="VLAN #"
-                            title="Filter by VLAN number (e.g. 100)"
-                            value="{{ $vlan_num ?: '' }}"
-                            min="0"
-                        >
+                        <select name="vlan" id="fdbh-vlan" class="form-control" title="Filter by VLAN — select a device first">
+                            <option value="">— All VLANs —</option>
+                            @if($vlan_num > 0)
+                            <option value="{{ $vlan_num }}" selected>{{ $vlan_num }}</option>
+                            @endif
+                        </select>
                     </div>
-                    <div class="col-sm-2">
-                        <button type="submit" class="btn btn-default">
-                            Apply Filters
-                        </button>
+                    <div class="col-sm-3" style="padding-top: 6px;">
+                        {{-- hidden input ensures hide_trunks is always submitted; checkbox toggles it --}}
+                        <input type="hidden" name="hide_trunks" id="fdbh-hide-trunks-val" value="{{ $hide_trunks ? '1' : '0' }}">
+                        <label class="checkbox-inline" style="font-weight: normal; margin-right: 12px;" title="Exclude ports that have seen more than 20 unique MACs (trunk/uplink heuristic)">
+                            <input type="checkbox" id="fdbh-hide-trunks-cb" {{ $hide_trunks ? 'checked' : '' }}
+                                   onchange="document.getElementById('fdbh-hide-trunks-val').value = this.checked ? '1' : '0'">
+                            Hide trunk ports
+                        </label>
+                        <button type="submit" class="btn btn-default btn-sm">Apply</button>
                     </div>
                 </div>
 
@@ -426,3 +426,75 @@
     @endif {{-- landing page --}}
 
 </div>{{-- .container-fluid --}}
+
+<script>
+(function () {
+    var baseUrl = '{{ url("plugin/FdbHistory") }}';
+    var initPort = {{ $port_id }};
+    var initVlan = {{ $vlan_num }};
+
+    function loadPorts(deviceId, selectPortId) {
+        var sel = document.getElementById('fdbh-port');
+        sel.innerHTML = '<option value="">Loading\u2026</option>';
+        if (!deviceId) {
+            sel.innerHTML = '<option value="">— All Ports —</option>';
+            loadVlans(deviceId, 0);
+            return;
+        }
+        fetch(baseUrl + '?format=json&action=ports&device=' + deviceId)
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                sel.innerHTML = '<option value="">— All Ports —</option>';
+                data.forEach(function (p) {
+                    var o = document.createElement('option');
+                    o.value = p.port_id;
+                    o.textContent = p.label;
+                    if (p.port_id == selectPortId) { o.selected = true; }
+                    sel.appendChild(o);
+                });
+            })
+            .catch(function () {
+                sel.innerHTML = '<option value="">— error loading ports —</option>';
+            });
+    }
+
+    function loadVlans(deviceId, selectVlan) {
+        var sel = document.getElementById('fdbh-vlan');
+        sel.innerHTML = '<option value="">Loading\u2026</option>';
+        if (!deviceId) {
+            sel.innerHTML = '<option value="">— All VLANs —</option>';
+            return;
+        }
+        fetch(baseUrl + '?format=json&action=vlans&device=' + deviceId)
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                sel.innerHTML = '<option value="">— All VLANs —</option>';
+                data.forEach(function (v) {
+                    var o = document.createElement('option');
+                    o.value = v.vlan_vlan;
+                    o.textContent = v.label;
+                    if (v.vlan_vlan == selectVlan) { o.selected = true; }
+                    sel.appendChild(o);
+                });
+            })
+            .catch(function () {
+                sel.innerHTML = '<option value="">— error loading VLANs —</option>';
+            });
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        var deviceSel = document.getElementById('fdbh-device');
+
+        deviceSel.addEventListener('change', function () {
+            loadPorts(this.value, 0);
+            loadVlans(this.value, 0);
+        });
+
+        // On page load, populate port/vlan if a device is already selected
+        if (deviceSel.value) {
+            loadPorts(deviceSel.value, initPort);
+            loadVlans(deviceSel.value, initVlan);
+        }
+    });
+}());
+</script>
