@@ -163,6 +163,19 @@
 
             @else
 
+                @php
+                    // Timeline: only meaningful when all results share one MAC
+                    $tl_unique_macs = $results->pluck('mac_address')->unique();
+                    $show_timeline  = $tl_unique_macs->count() === 1;
+                    if ($show_timeline) {
+                        $tl_min   = $results->min(fn($r) => strtotime($r->first_seen));
+                        $tl_max   = max($results->max(fn($r) => strtotime($r->last_seen)), time());
+                        $tl_range = max($tl_max - $tl_min, 1);
+                        // Label format depends on range length
+                        $tl_fmt   = $tl_range < 86400 ? 'H:i' : ($tl_range < 604800 ? 'D H:i' : 'M j');
+                    }
+                @endphp
+
                 {{-- Result summary bar --}}
                 <div style="margin-bottom: 10px;">
                     <strong>{{ $stats['total'] }}</strong> result(s)
@@ -191,12 +204,23 @@
                         </span>
                     @endif
                     <span class="pull-right">
+                        @if($show_timeline)
+                        <div class="btn-group btn-group-xs" style="margin-right: 6px;">
+                            <button type="button" class="btn btn-default active" id="fdbh-btn-table" onclick="fdbhView('table')">
+                                <i class="fa fa-table" aria-hidden="true"></i> Table
+                            </button>
+                            <button type="button" class="btn btn-default" id="fdbh-btn-timeline" onclick="fdbhView('timeline')">
+                                <i class="fa fa-bar-chart" aria-hidden="true"></i> Timeline
+                            </button>
+                        </div>
+                        @endif
                         <a href="{{ url('plugin/FdbHistory') }}?{{ http_build_query(array_filter(['mac' => $raw_mac, 'device' => $device_id ?: '', 'port' => $port_id ?: '', 'vlan' => $vlan_num ?: '', 'format' => 'json'])) }}" class="btn btn-xs btn-default" target="_blank">
                             <i class="fa fa-code" aria-hidden="true"></i> JSON
                         </a>
                     </span>
                 </div>
 
+                <div id="fdbh-table-wrapper">
                 <div class="panel panel-default">
                     <div class="table-responsive">
                         <table
@@ -320,6 +344,77 @@
                         </table>
                     </div>{{-- .table-responsive --}}
                 </div>{{-- .panel --}}
+                </div>{{-- #fdbh-table-wrapper --}}
+
+                {{-- -------------------------------------------------------- --}}
+                {{-- Timeline view (single-MAC only)                          --}}
+                {{-- -------------------------------------------------------- --}}
+                @if($show_timeline)
+                <div id="fdbh-timeline" style="display:none;">
+                    <div class="panel panel-default">
+                        <div class="panel-body" style="padding: 12px 15px;">
+
+                            @php
+                                // Time-axis tick labels (5 evenly spaced)
+                                $tl_ticks = [];
+                                for ($i = 0; $i <= 5; $i++) {
+                                    $tl_ticks[] = [
+                                        'pct'   => $i * 20,
+                                        'label' => date($tl_fmt, $tl_min + $tl_range * $i / 5),
+                                    ];
+                                }
+                                $tl_sorted = $results->sortBy('first_seen');
+                            @endphp
+
+                            {{-- Time axis --}}
+                            <div style="margin-left:210px; position:relative; height:18px; margin-bottom:4px; border-bottom:1px solid #ddd;">
+                                @foreach($tl_ticks as $tick)
+                                <span style="position:absolute; left:{{ $tick['pct'] }}%; transform:translateX(-50%); font-size:11px; color:#888; white-space:nowrap;">
+                                    {{ $tick['label'] }}
+                                </span>
+                                @endforeach
+                            </div>
+
+                            {{-- Rows --}}
+                            @foreach($tl_sorted as $row)
+                            @php
+                                $tl_start  = strtotime($row->first_seen);
+                                $tl_end    = max(strtotime($row->last_seen), $tl_start + 60);
+                                $tl_left   = ($tl_start - $tl_min) / $tl_range * 100;
+                                $tl_width  = max(($tl_end - $tl_start) / $tl_range * 100, 0.3);
+                                $tl_host   = $row->hostname ?: $row->sysName ?: 'Device #'.$row->device_id;
+                                $tl_iface  = $row->ifName ?: $row->ifDescr ?: 'port #'.$row->port_id;
+                                $tl_age    = (time() - $tl_end) / 60;
+                                $tl_color  = $tl_age < 20 ? '#5cb85c' : ($tl_age < 120 ? '#f0ad4e' : '#999');
+                                $tl_tip    = "{$tl_host} / {$tl_iface}" .
+                                             ($row->vlan_vlan ? ' · VLAN '.$row->vlan_vlan : '') .
+                                             "\nFirst: {$row->first_seen}\nLast:  {$row->last_seen}";
+                            @endphp
+                            <div style="display:flex; align-items:center; margin-bottom:3px; min-height:26px;">
+                                {{-- Row label --}}
+                                <div style="width:210px; flex-shrink:0; padding-right:8px; text-align:right; font-size:12px; line-height:1.3; overflow:hidden; white-space:nowrap;">
+                                    <span style="font-weight:600; color:#333;">{{ $tl_host }}</span><br>
+                                    <span class="text-muted">{{ $tl_iface }}{{ $row->vlan_vlan ? ' · '.$row->vlan_vlan : '' }}</span>
+                                </div>
+                                {{-- Bar track --}}
+                                <div style="flex:1; position:relative; height:22px; background:#f0f0f0; border-radius:3px;">
+                                    <div style="position:absolute; left:{{ number_format($tl_left,3) }}%; width:{{ number_format($tl_width,3) }}%; min-width:3px; height:100%; background:{{ $tl_color }}; border-radius:3px; cursor:default;"
+                                         title="{{ $tl_tip }}"></div>
+                                </div>
+                            </div>
+                            @endforeach
+
+                            {{-- Legend --}}
+                            <div style="margin-left:210px; margin-top:8px; font-size:11px; color:#666;">
+                                <span style="display:inline-block;width:11px;height:11px;background:#5cb85c;border-radius:2px;vertical-align:middle;"></span> Active &nbsp;
+                                <span style="display:inline-block;width:11px;height:11px;background:#f0ad4e;border-radius:2px;vertical-align:middle;"></span> Recent &nbsp;
+                                <span style="display:inline-block;width:11px;height:11px;background:#999;border-radius:2px;vertical-align:middle;"></span> Historical
+                            </div>
+
+                        </div>
+                    </div>
+                </div>{{-- #fdbh-timeline --}}
+                @endif
 
             @endif {{-- results empty --}}
         </div>
@@ -428,6 +523,18 @@
 </div>{{-- .container-fluid --}}
 
 <script>
+function fdbhView(v) {
+    var isTimeline = v === 'timeline';
+    var tw = document.getElementById('fdbh-table-wrapper');
+    var tl = document.getElementById('fdbh-timeline');
+    if (tw) { tw.style.display = isTimeline ? 'none' : ''; }
+    if (tl) { tl.style.display = isTimeline ? '' : 'none'; }
+    var bt = document.getElementById('fdbh-btn-table');
+    var bl = document.getElementById('fdbh-btn-timeline');
+    if (bt) { bt.className = 'btn btn-default' + (isTimeline ? '' : ' active'); }
+    if (bl) { bl.className = 'btn btn-default' + (isTimeline ? ' active' : ''); }
+}
+
 (function () {
     var baseUrl = '{{ url("plugin/FdbHistory") }}';
     var initPort = {{ $port_id }};
