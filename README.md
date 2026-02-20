@@ -115,12 +115,25 @@ sudo chown -R librenms:librenms /opt/librenms/app/Plugins/FdbHistory
 - Filter by **device**, **port**, or **VLAN** — combine with MAC search or use alone
 - **Cascading dropdowns** — selecting a device auto-populates the port and VLAN dropdowns
   with only the options that actually appear in history for that device
-- **Hide trunk ports** checkbox (default on) — automatically excludes trunk/uplink ports
-  using a MAC-count heuristic (ports that have carried >20 distinct MACs are treated as
-  trunks and suppressed, so endpoint searches show only access port hits)
+- **Hide trunk ports** checkbox (default on) — excludes uplink ports using a MAC-count
+  heuristic (>20 distinct MACs). WAP radio ports (`ieee80211` ifType) are always shown
+  regardless of client count, so wireless roaming history is never suppressed
 - **OUI vendor names** shown when the `vendors` table is present
 - Status badges: **Active** (< 20 min), **Recent** (< 2 hr), **Historical**
 - Results capped at 1,000 rows
+
+### Timeline View
+
+When search results contain exactly one MAC address, a **Table | Timeline** toggle
+appears in the results bar. The Timeline view shows a Gantt-style chart — one row per
+(device / port / VLAN) observation, with a pin marker at `last_seen` on a shared time
+axis. The axis spans only the window of last-seen events, so it stays compact as history
+accumulates over months and years.
+
+- Pin colour matches Active / Recent / Historical status
+- Hover any pin for device, interface, VLAN, and both timestamps
+- Rows sorted oldest → newest by `first_seen`
+- Particularly useful for tracing wireless device roaming across APs
 
 ### JSON API
 

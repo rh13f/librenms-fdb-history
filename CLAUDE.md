@@ -150,23 +150,36 @@ Add `&format=json` to get JSON instead of HTML. Uses `response()->json(...)->sen
 
 OUI vendor join: `LEFT JOIN vendors as ven ON ven.oui = UPPER(LEFT(h.mac_address, 6))` — only added when `$hasVendors === true`.
 
-**Trunk filter** (`hide_trunks`): When on and no specific port is selected, adds:
+**Trunk filter** (`hide_trunks`): When on and no specific port is selected, joins ports
+table and excludes `ieee80211` (WAP radio) ports from trunk detection — they are always
+shown regardless of client count. Non-wireless ports with >20 distinct MACs are excluded:
 ```php
 ->whereNotIn('h.port_id', function ($q) {
-    $q->from('fdb_history')->select('port_id')
-      ->where('port_id', '>', 0)->groupBy('port_id')
-      ->havingRaw('COUNT(DISTINCT mac_address) > 20');
+    $q->from('fdb_history as fh')
+      ->leftJoin('ports as fp', 'fp.port_id', '=', 'fh.port_id')
+      ->select('fh.port_id')->where('fh.port_id', '>', 0)
+      ->where(fn($w) => $w->whereNull('fp.ifType')->orWhereRaw("fp.ifType != 'ieee80211'"))
+      ->groupBy('fh.port_id')->havingRaw('COUNT(DISTINCT fh.mac_address) > 20');
 })
 ```
 Form always submits `hide_trunks=0|1` via a hidden input; checkbox toggles it via JS `onchange`.
 
+**Timeline view** (`page.blade.php`): shown when results contain exactly one unique MAC.
+- Table | Timeline toggle buttons in results bar
+- Gantt-style chart: one row per result row, pin marker at `last_seen` on shared time axis
+- Axis min/max based on `last_seen` values only (not `first_seen`) — stays compact as DB grows
+- Time-axis label format: `H:i` (<1 day range), `D H:i` (<1 week), `M j` (longer)
+- Pin colour: green (active <20 min), amber (recent <2 hr), grey (historical)
+- Rows sorted by `first_seen` ascending; hover tooltip shows both timestamps
+- `$show_timeline` = true only when `$results->pluck('mac_address')->unique()->count() === 1`
+
 **UI features:**
 - MAC input + Device dropdown + Port select (AJAX-populated) + VLAN select (AJAX-populated)
-- "Hide trunk ports" checkbox (default on, threshold >20 MACs)
+- "Hide trunk ports" checkbox (default on, threshold >20 MACs, WAPs always shown)
 - Vendor column (when `vendors` table present)
 - Results: device link, interface link, VLAN number + name, first_seen, last_seen
 - Status badges: Active (< 20 min), Recent (< 2 hr), Historical
-- JSON button in results bar
+- JSON button + Table/Timeline toggle in results bar
 - Landing page: table stats + device dropdown pre-populated
 - JS: device change → AJAX-load ports/vlans; page-load with device set → auto-populate
 
