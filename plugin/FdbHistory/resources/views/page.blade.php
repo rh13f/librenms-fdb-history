@@ -102,7 +102,7 @@
                     <div class="col-sm-3" style="padding-top: 6px;">
                         {{-- hidden input ensures hide_trunks is always submitted; checkbox toggles it --}}
                         <input type="hidden" name="hide_trunks" id="fdbh-hide-trunks-val" value="{{ $hide_trunks ? '1' : '0' }}">
-                        <label class="checkbox-inline" style="font-weight: normal; margin-right: 12px;" title="Exclude ports that have seen more than 20 unique MACs (trunk/uplink heuristic)">
+                        <label class="checkbox-inline" style="font-weight: normal; margin-right: 12px;" title="Exclude uplink/trunk ports (&gt;20 MACs). Wireless ports (ieee80211) are always shown regardless of client count.">
                             <input type="checkbox" id="fdbh-hide-trunks-cb" {{ $hide_trunks ? 'checked' : '' }}
                                    onchange="document.getElementById('fdbh-hide-trunks-val').value = this.checked ? '1' : '0'">
                             Hide trunk ports

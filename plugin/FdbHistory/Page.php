@@ -120,13 +120,19 @@ class Page extends PageHook
                     if ($port_id > 0) {
                         $query->where('h.port_id', '=', $port_id);
                     } elseif ($hide_trunks) {
-                        // Exclude trunk/uplink ports: those that have carried >20 distinct MACs
+                        // Exclude uplink/trunk ports: non-wireless ports with >20 distinct MACs.
+                        // ieee80211 ports (WAPs) are never filtered regardless of client count.
                         $query->whereNotIn('h.port_id', function ($q) {
-                            $q->from('fdb_history')
-                              ->select('port_id')
-                              ->where('port_id', '>', 0)
-                              ->groupBy('port_id')
-                              ->havingRaw('COUNT(DISTINCT mac_address) > 20');
+                            $q->from('fdb_history as fh')
+                              ->leftJoin('ports as fp', 'fp.port_id', '=', 'fh.port_id')
+                              ->select('fh.port_id')
+                              ->where('fh.port_id', '>', 0)
+                              ->where(function ($w) {
+                                  $w->whereNull('fp.ifType')
+                                    ->orWhereRaw("fp.ifType != 'ieee80211'");
+                              })
+                              ->groupBy('fh.port_id')
+                              ->havingRaw('COUNT(DISTINCT fh.mac_address) > 20');
                         });
                     }
 
