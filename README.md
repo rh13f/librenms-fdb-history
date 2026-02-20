@@ -85,7 +85,7 @@ Create `/etc/cron.d/librenms-fdb-history`:
 ```bash
 sudo bash -c 'cat > /etc/cron.d/librenms-fdb-history <<EOF
 # FDB History Sync — runs every minute
-* * * * * librenms /usr/bin/php /opt/librenms/scripts/fdb-history-sync.php >> /var/log/librenms/fdb-history-sync.log 2>&1
+* * * * * librenms /usr/bin/php /opt/librenms/scripts/fdb-history-sync.php >> /opt/librenms/logs/fdb-history-sync.log 2>&1
 EOF'
 ```
 
@@ -266,7 +266,7 @@ ls /opt/librenms/app/Plugins/Hooks/PortTabHook.php
 Add a logrotate rule:
 ```bash
 sudo bash -c 'cat > /etc/logrotate.d/librenms-fdb-history <<EOF
-/var/log/librenms/fdb-history-sync.log {
+/opt/librenms/logs/fdb-history-sync.log {
     weekly
     rotate 4
     compress

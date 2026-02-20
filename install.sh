@@ -16,7 +16,7 @@ set -euo pipefail
 LIBRENMS_PATH="${1:-/opt/librenms}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CRON_FILE="/etc/cron.d/librenms-fdb-history"
-LOG_FILE="/var/log/librenms/fdb-history-sync.log"
+LOG_FILE="${LIBRENMS_PATH}/logs/fdb-history-sync.log"
 
 # ---- Helpers ----------------------------------------------------------------
 

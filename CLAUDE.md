@@ -114,7 +114,7 @@ chmod 750 /opt/librenms/scripts/fdb-history-sync.php
 
 **Cron (`/etc/cron.d/librenms-fdb-history`) — runs every minute:**
 ```
-* * * * * librenms /usr/bin/php /opt/librenms/scripts/fdb-history-sync.php >> /var/log/librenms/fdb-history-sync.log 2>&1
+* * * * * librenms /usr/bin/php /opt/librenms/scripts/fdb-history-sync.php >> /opt/librenms/logs/fdb-history-sync.log 2>&1
 ```
 Note: ~144 KB/day of log output at 1-minute intervals. Add logrotate if needed.
 
@@ -236,5 +236,5 @@ All files live outside the LibreNMS git tree:
 5. **Filter test:** filter by device + VLAN — verify row count changes
 6. **JSON API:** `curl 'https://your-librenms/plugin/FdbHistory?mac=aabbcc&format=json'`
 7. **Port tab:** device → port detail → Plugins/FDB History tab
-8. **Cron:** `tail /var/log/librenms/fdb-history-sync.log` after 1 minute
+8. **Cron:** `tail /opt/librenms/logs/fdb-history-sync.log` after 1 minute
 9. **Update test:** `git pull` in `/opt/librenms` — verify plugin files still present
