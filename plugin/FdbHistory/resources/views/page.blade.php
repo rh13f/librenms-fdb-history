@@ -168,7 +168,7 @@
                     $tl_unique_macs = $results->pluck('mac_address')->unique();
                     $show_timeline  = $tl_unique_macs->count() === 1;
                     if ($show_timeline) {
-                        $tl_min   = $results->min(fn($r) => strtotime($r->first_seen));
+                        $tl_min   = $results->min(fn($r) => strtotime($r->last_seen));
                         $tl_max   = max($results->max(fn($r) => strtotime($r->last_seen)), time());
                         $tl_range = max($tl_max - $tl_min, 1);
                         // Label format depends on range length
@@ -378,17 +378,15 @@
                             {{-- Rows --}}
                             @foreach($tl_sorted as $row)
                             @php
-                                $tl_start  = strtotime($row->first_seen);
-                                $tl_end    = max(strtotime($row->last_seen), $tl_start + 60);
-                                $tl_left   = ($tl_start - $tl_min) / $tl_range * 100;
-                                $tl_width  = max(($tl_end - $tl_start) / $tl_range * 100, 0.3);
+                                $tl_end    = strtotime($row->last_seen);
+                                $tl_pos    = ($tl_end - $tl_min) / $tl_range * 100;
                                 $tl_host   = $row->hostname ?: $row->sysName ?: 'Device #'.$row->device_id;
                                 $tl_iface  = $row->ifName ?: $row->ifDescr ?: 'port #'.$row->port_id;
                                 $tl_age    = (time() - $tl_end) / 60;
                                 $tl_color  = $tl_age < 20 ? '#5cb85c' : ($tl_age < 120 ? '#f0ad4e' : '#999');
                                 $tl_tip    = "{$tl_host} / {$tl_iface}" .
                                              ($row->vlan_vlan ? ' · VLAN '.$row->vlan_vlan : '') .
-                                             "\nFirst: {$row->first_seen}\nLast:  {$row->last_seen}";
+                                             "\nFirst seen: {$row->first_seen}\nLast seen:  {$row->last_seen}";
                             @endphp
                             <div style="display:flex; align-items:center; margin-bottom:3px; min-height:26px;">
                                 {{-- Row label --}}
@@ -396,9 +394,9 @@
                                     <span style="font-weight:600; color:#333;">{{ $tl_host }}</span><br>
                                     <span class="text-muted">{{ $tl_iface }}{{ $row->vlan_vlan ? ' · '.$row->vlan_vlan : '' }}</span>
                                 </div>
-                                {{-- Bar track --}}
+                                {{-- Marker track --}}
                                 <div style="flex:1; position:relative; height:22px; background:#f0f0f0; border-radius:3px;">
-                                    <div style="position:absolute; left:{{ number_format($tl_left,3) }}%; width:{{ number_format($tl_width,3) }}%; min-width:3px; height:100%; background:{{ $tl_color }}; border-radius:3px; cursor:default;"
+                                    <div style="position:absolute; left:{{ number_format($tl_pos,3) }}%; transform:translateX(-50%); width:4px; height:100%; background:{{ $tl_color }}; border-radius:2px; cursor:default;"
                                          title="{{ $tl_tip }}"></div>
                                 </div>
                             </div>
